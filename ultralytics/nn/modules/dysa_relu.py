@@ -16,17 +16,17 @@ class DySCA_ReLU(nn.Module):
         self.norm = nn.BatchNorm2d(channels)
 
         self.ch_attn_max = nn.Conv2d(
-            channels, channels, 1, groups=1, bias=True
+            channels, 1, 1, groups=1, bias=True
         )
 
         # --- Spatial Attention (只调制 a) ---
-        self.spatial_attn = nn.Sequential(
-            nn.Conv2d(1, 1, kernel_size=3, padding=1, bias=True), nn.Sigmoid()
-        )
+        # self.spatial_attn = nn.Sequential(
+        #     nn.Conv2d(1, 1, kernel_size=3, padding=1, bias=True), nn.Sigmoid()
+        # )
 
-        self.sc_mixing = nn.Conv2d(
-            channels, channels, 1, groups=1, bias=True
-        )
+        # self.sc_mixing = nn.Conv2d(
+        #     channels, channels, 1, groups=1, bias=True
+        # )
 
         self._initialize_weights()
 
@@ -42,13 +42,12 @@ class DySCA_ReLU(nn.Module):
         x = self.extractor(x)
         x = self.norm(x)
         pooled_max = F.max_pool2d(x, (x.size(2), x.size(3)))
-        a = torch.sigmoid(self.ch_attn_max(pooled_max))  # [B, C, 1, 1]
-
+        
         spatial_max = torch.max(x, dim=1, keepdim=True)[0]
-        spatial_weight_max = self.spatial_attn(spatial_max)
-        a = a * spatial_weight_max
+        # spatial_weight_max = self.spatial_attn(spatial_max)
+        a = pooled_max * spatial_max
 
-        logit = self.sc_mixing(a)
+        logit = self.ch_attn_max(a)
 
         out = x * torch.sigmoid(logit)
 
