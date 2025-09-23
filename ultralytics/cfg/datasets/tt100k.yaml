@@ -1,0 +1,62 @@
+# Ultralytics YOLO 🚀 TT100K Traffic Sign Dataset Configuration
+# TT100K: A Large-scale Traffic Sign Detection and Recognition Dataset
+# Documentation: https://cg.cs.tsinghua.edu.cn/traffic-sign/
+# Example usage: yolo train data=tt100k.yaml
+# parent
+# ├── ultralytics
+# └── datasets
+#     └── tt100k_2021 ← downloads here
+
+# Train/val/test sets as 1) dir: path/to/imgs, 2) file: path/to/imgs.txt, or 3) list: [path/to/imgs1, path/to/imgs2, ..]
+path: tt100k_2021  # dataset root dir
+train: train.txt  # train images (relative to 'path') 6034 images
+val: test.txt     # val images (relative to 'path') 3016 images
+test: test.txt    # test images (optional)
+
+# Classes (filtered: samples >= 100)
+names:
+  0: i2
+  1: i2r
+  2: i4
+  3: i4l
+  4: i5
+  5: il100
+  6: il60
+  7: il80
+  8: ip
+  9: p10
+  10: p11
+  11: p12
+  12: p13
+  13: p19
+  14: p23
+  15: p26
+  16: p27
+  17: p3
+  18: p5
+  19: p6
+  20: pg
+  21: ph4
+  22: ph4.5
+  23: ph5
+  24: pl100
+  25: pl120
+  26: pl20
+  27: pl30
+  28: pl40
+  29: pl5
+  30: pl50
+  31: pl60
+  32: pl70
+  33: pl80
+  34: pm20
+  35: pm30
+  36: pm55
+  37: pn
+  38: pne
+  39: pr40
+  40: w13
+  41: w32
+  42: w55
+  43: w57
+  44: w59
