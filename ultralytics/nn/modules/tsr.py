@@ -9,7 +9,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from ultralytics.nn.modules.conv import Conv
 
-from ultralytics.nn.modules.dysa_relu import DySCA_ReLU
+from ultralytics.nn.modules.cbam import CBAM
 
 class SCDown_v2(nn.Module):
 
@@ -77,11 +77,22 @@ class DualAxisAggAttn_v3(nn.Module):
 
         self.conv_fusion = nn.ModuleDict(
             {
-                "W": Conv(c1=middle_channels, c2=middle_channels, k=3, g=middle_channels, act=True),
-                "H": Conv(c1=middle_channels, c2=middle_channels, k=3, g=middle_channels, act=True),
+                "W": Conv(
+                    c1=middle_channels,
+                    c2=middle_channels,
+                    k=3,
+                    g=middle_channels,
+                    act=True,
+                ),
+                "H": Conv(
+                    c1=middle_channels,
+                    c2=middle_channels,
+                    k=3,
+                    g=middle_channels,
+                    act=True,
+                ),
             }
         )
-
 
         final_channels = int(2 * middle_channels)
         self.out_project = Conv(c1=final_channels, c2=out_channels, k=1, act=True)
@@ -97,7 +108,7 @@ class DualAxisAggAttn_v3(nn.Module):
 
         dim = -1 if axis == "W" else -2
         query_avg = query.mean(dim=dim, keepdim=True)
-        scores = F.softmax(query_avg *key, dim=dim)
+        scores = F.softmax(query_avg * key, dim=dim)
         context = (value * scores).sum(dim=dim, keepdim=True)
 
         gate = F.sigmoid(x)
@@ -130,7 +141,6 @@ class DualAxisAggAttn_v3(nn.Module):
         return x_out
 
 
-
 def channel_shuffle(x, groups):
     """Channel Shuffle operation.
 
@@ -156,6 +166,7 @@ def channel_shuffle(x, groups):
 
     return x
 
+
 class LocalExtractor(nn.Module):
     def __init__(self, channels: int, experts: int = 2, kernel_size: int = 3):
         super().__init__()
@@ -164,22 +175,29 @@ class LocalExtractor(nn.Module):
         self.middle_channels = channels // 2
 
         # Step 1: 降维
-        self.intrinsic_conv = Conv(channels, self.middle_channels, kernel_size, act=True)
+        self.intrinsic_conv = Conv(
+            channels, self.middle_channels, kernel_size, act=True
+        )
 
         # Step 2: depthwise-like 空间建模
         self.spatial_conv = Conv(
             self.middle_channels,
-            self.middle_channels * experts * 2, # x2 是为了计算GLU
+            self.middle_channels * experts * 2,  # x2 是为了计算GLU
             kernel_size,
             g=self.middle_channels,
             act=True,
         )
 
         # Step 3: 跨通道融合
-        self.reduce = Conv(self.middle_channels * experts * 2, self.middle_channels * 2, k=1, g=2, act=True)  # 2x channels
+        self.reduce = Conv(
+            self.middle_channels * experts * 2,
+            self.middle_channels * 2,
+            k=1,
+            g=2,
+            act=True,
+        )  # 2x channels
 
         self.project = Conv(channels, channels, k=1, act=True)
-
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         intrinsic_feat = self.intrinsic_conv(x)
@@ -193,8 +211,8 @@ class LocalExtractor(nn.Module):
         out = channel_shuffle(out, 2)
         out = self.project(out)
 
-
         return out
+
 
 class ELANBlock(nn.Module):
     def __init__(
@@ -216,7 +234,9 @@ class ELANBlock(nn.Module):
 
         self.blocks = nn.ModuleList()
         for i in range(num_blocks):
-            internal_block = LocalExtractor(channels=middle_channels, kernel_size=kernel_size)
+            internal_block = LocalExtractor(
+                channels=middle_channels, kernel_size=kernel_size
+            )
             self.blocks.append(internal_block)
 
         self.out_project = Conv(c1=final_channels, c2=out_channels, k=1, act=True)
@@ -322,6 +342,7 @@ class TSRModule(nn.Module):
 
 #         return out + x
 
+# v1.0 有效果
 class AdaConcat(nn.Module):
     """
     Concatenate a list of tensors along specified dimension in a adaptive manner.
@@ -330,7 +351,9 @@ class AdaConcat(nn.Module):
         d (int): Dimension along which to concatenate tensors.
     """
 
-    def __init__(self, channels: list = [128, 256], reduction: int = 4, dimension: int = 1):
+    def __init__(
+        self, channels: list = [512, 256], reduction: int = 4, dimension: int = 1
+    ):
         """
         Initialize Concat module.
 
@@ -344,11 +367,19 @@ class AdaConcat(nn.Module):
         self.reduction = reduction
         self.d = dimension
 
-        self.adaptive_attns = nn.ModuleList()
-        for c in self.channels:
-            self.adaptive_attns.append(
-                DySCA_ReLU(c, reduction=self.reduction)
-            )
+
+        total_chs = sum(self.channels)
+        self.channel_attn_max = nn.Sequential(
+            nn.Conv2d(total_chs, total_chs // self.reduction, 1, bias=True),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(total_chs // self.reduction, total_chs, 1, bias=True),
+            nn.Hardsigmoid(),
+        )
+
+        self.spatial_attn_max = nn.Sequential(
+            nn.Conv2d(2, 2, kernel_size=3, padding=1, bias=True),
+            nn.Hardsigmoid(),
+        )
 
     def forward(self, x: list[torch.Tensor]):
         """
@@ -360,6 +391,32 @@ class AdaConcat(nn.Module):
         Returns:
             (torch.Tensor): Concatenated tensor.
         """
-        x = [self.adaptive_attns[i](x[i]) for i in range(len(x))]
+        channel_max_pool = torch.cat(
+            [
+                F.max_pool2d(
+                    x[i],
+                    (x[i].size(2), x[i].size(3)),
+                    stride=(x[i].size(2), x[i].size(3)),
+                )
+                for i in range(len(x))
+            ],
+            dim=1,
+        )
+
+        channel_att_max = self.channel_attn_max(channel_max_pool)
+        a1, a2 = torch.split(channel_att_max, self.channels, dim=1)
+
+        spatial_max = torch.cat(
+            [
+                torch.max(x[i], dim=(1), keepdim=True)[0]
+                for i in range(len(x))
+            ],
+            dim=1,
+        )
         
-        return torch.cat(x, self.d)
+        spatial_att_max = self.spatial_attn_max(spatial_max)
+        s1, s2 = torch.split(spatial_att_max, [1,1], dim=1)
+
+        out = torch.cat([x[0] * torch.sigmoid(a1*s1), x[1] * torch.sigmoid(a2*s2)], dim=self.d)
+
+        return out

@@ -24,6 +24,6 @@ train_results = model.train(
     copy_paste=0.1,  # N:0.1, S:0.15; M:0.4; L:0.5; X:0.6
     device=[0, 1],  # device to run on, i.e. device=0 or device=0,1,2,3 or device=cpu
     cache="disk",
-    project="training_log/yolo114_VOC",
-    name="n_move"
+    project="runs/yolo114_VOC",
+    name="n"
 )

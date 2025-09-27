@@ -4,14 +4,14 @@ from ultralytics.utils import LOGGER
 
 LOGGER.addHandler(logging.FileHandler('results.txt', mode='w'))
 
-model = YOLO('training_log/yolo11_tt100k/n/weights/best.pt')
+model = YOLO('runs/yolo114_VOC/n3/weights/best.pt')
 LOGGER.info("Model info:")
 LOGGER.info(model)
 LOGGER.info(model.info())
 
 
 
-metrics = model.val(data='tt100k.yaml', batch=1)
+metrics = model.val(data='VOC.yaml', batch=64)
 
 LOGGER.info("mAP50-95:" + str(metrics.box.map))  # mAP50-95
 LOGGER.info("mAP50: " + str(metrics.box.map50))  # mAP50

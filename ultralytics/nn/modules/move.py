@@ -9,110 +9,110 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-USE_FLASH_ATTN = False
-try:
-    import torch
+# USE_FLASH_ATTN = False
+# try:
+#     import torch
 
-    if (
-        torch.cuda.is_available() and torch.cuda.get_device_capability()[0] >= 8
-    ):  # Ampere or newer
-        from flash_attn.flash_attn_interface import flash_attn_func
+#     if (
+#         torch.cuda.is_available() and torch.cuda.get_device_capability()[0] >= 8
+#     ):  # Ampere or newer
+#         from flash_attn.flash_attn_interface import flash_attn_func
 
-        USE_FLASH_ATTN = True
-    else:
-        from torch.nn.functional import scaled_dot_product_attention as sdpa
+#         USE_FLASH_ATTN = True
+#     else:
+#         from torch.nn.functional import scaled_dot_product_attention as sdpa
 
-        logger.warning(
-            "FlashAttention is not available on this device. Using scaled_dot_product_attention instead."
-        )
-except Exception:
-    from torch.nn.functional import scaled_dot_product_attention as sdpa
+#         logger.warning(
+#             "FlashAttention is not available on this device. Using scaled_dot_product_attention instead."
+#         )
+# except Exception:
+#     from torch.nn.functional import scaled_dot_product_attention as sdpa
 
-    logger.warning(
-        "FlashAttention is not available on this device. Using scaled_dot_product_attention instead."
-    )
+#     logger.warning(
+#         "FlashAttention is not available on this device. Using scaled_dot_product_attention instead."
+#     )
 
 
-class SelfAttn(nn.Module):
-    """
-    Area-attention module for YOLO models, providing efficient attention mechanisms.
+# class SelfAttn(nn.Module):
+#     """
+#     Area-attention module for YOLO models, providing efficient attention mechanisms.
 
-    This module implements an area-based attention mechanism that processes input features in a spatially-aware manner,
-    making it particularly effective for object detection tasks.
+#     This module implements an area-based attention mechanism that processes input features in a spatially-aware manner,
+#     making it particularly effective for object detection tasks.
 
-    Attributes:
-        area (int): Number of areas the feature map is divided.
-        num_heads (int): Number of heads into which the attention mechanism is divided.
-        head_dim (int): Dimension of each attention head.
-        qkv (Conv): Convolution layer for computing query, key and value tensors.
-        proj (Conv): Projection convolution layer.
+#     Attributes:
+#         area (int): Number of areas the feature map is divided.
+#         num_heads (int): Number of heads into which the attention mechanism is divided.
+#         head_dim (int): Dimension of each attention head.
+#         qkv (Conv): Convolution layer for computing query, key and value tensors.
+#         proj (Conv): Projection convolution layer.
 
-    Methods:
-        forward: Applies area-attention to input tensor.
+#     Methods:
+#         forward: Applies area-attention to input tensor.
 
-    Examples:
-        >>> attn = AAttn(dim=256, num_heads=8, area=4)
-        >>> x = torch.randn(1, 256, 32, 32)
-        >>> output = attn(x)
-        >>> print(output.shape)
-        torch.Size([1, 256, 32, 32])
-    """
+#     Examples:
+#         >>> attn = AAttn(dim=256, num_heads=8, area=4)
+#         >>> x = torch.randn(1, 256, 32, 32)
+#         >>> output = attn(x)
+#         >>> print(output.shape)
+#         torch.Size([1, 256, 32, 32])
+#     """
 
-    def __init__(self, dim, num_heads, area=1):
-        """Initializes the area-attention module, a simple yet efficient attention module for YOLO."""
-        super().__init__()
-        self.area = area
+#     def __init__(self, dim, num_heads, area=1):
+#         """Initializes the area-attention module, a simple yet efficient attention module for YOLO."""
+#         super().__init__()
+#         self.area = area
 
-        self.num_heads = num_heads
-        self.head_dim = head_dim = dim // num_heads
-        all_head_dim = head_dim * self.num_heads
+#         self.num_heads = num_heads
+#         self.head_dim = head_dim = dim // num_heads
+#         all_head_dim = head_dim * self.num_heads
 
-        self.qk = Conv(dim, all_head_dim * 2, 1, act=False)
-        self.v = Conv(dim, all_head_dim, 1, act=False)
-        self.proj = Conv(all_head_dim, dim, 1, act=False)
+#         self.qk = Conv(dim, all_head_dim * 2, 1, act=False)
+#         self.v = Conv(dim, all_head_dim, 1, act=False)
+#         self.proj = Conv(all_head_dim, dim, 1, act=False)
 
-    def forward(self, x):
-        """Processes the input tensor 'x' through the area-attention"""
-        B, C, H, W = x.shape
-        N = H * W
+#     def forward(self, x):
+#         """Processes the input tensor 'x' through the area-attention"""
+#         B, C, H, W = x.shape
+#         N = H * W
 
-        qk = self.qk(x).flatten(2).transpose(1, 2)
-        v = self.v(x)
-        v = v.flatten(2).transpose(1, 2)
+#         qk = self.qk(x).flatten(2).transpose(1, 2)
+#         v = self.v(x)
+#         v = v.flatten(2).transpose(1, 2)
 
-        if self.area > 1:
-            qk = qk.reshape(B * self.area, N // self.area, C * 2)
-            v = v.reshape(B * self.area, N // self.area, C)
-            B, N, _ = qk.shape
-        q, k = qk.split([C, C], dim=2)
+#         if self.area > 1:
+#             qk = qk.reshape(B * self.area, N // self.area, C * 2)
+#             v = v.reshape(B * self.area, N // self.area, C)
+#             B, N, _ = qk.shape
+#         q, k = qk.split([C, C], dim=2)
 
-        if x.is_cuda and USE_FLASH_ATTN:
-            q = q.view(B, N, self.num_heads, self.head_dim)
-            k = k.view(B, N, self.num_heads, self.head_dim)
-            v = v.view(B, N, self.num_heads, self.head_dim)
+#         if x.is_cuda and USE_FLASH_ATTN:
+#             q = q.view(B, N, self.num_heads, self.head_dim)
+#             k = k.view(B, N, self.num_heads, self.head_dim)
+#             v = v.view(B, N, self.num_heads, self.head_dim)
 
-            x = flash_attn_func(  # type: ignore
-                q.contiguous().half(), k.contiguous().half(), v.contiguous().half()
-            ).to(q.dtype)
-        else:
-            q = q.transpose(1, 2).view(B, self.num_heads, self.head_dim, N)
-            k = k.transpose(1, 2).view(B, self.num_heads, self.head_dim, N)
-            v = v.transpose(1, 2).view(B, self.num_heads, self.head_dim, N)
+#             x = flash_attn_func(  # type: ignore
+#                 q.contiguous().half(), k.contiguous().half(), v.contiguous().half()
+#             ).to(q.dtype)
+#         else:
+#             q = q.transpose(1, 2).view(B, self.num_heads, self.head_dim, N)
+#             k = k.transpose(1, 2).view(B, self.num_heads, self.head_dim, N)
+#             v = v.transpose(1, 2).view(B, self.num_heads, self.head_dim, N)
 
-            attn = (q.transpose(-2, -1) @ k) * (self.head_dim**-0.5)
-            max_attn = attn.max(dim=-1, keepdim=True).values
-            exp_attn = torch.exp(attn - max_attn)
-            attn = exp_attn / exp_attn.sum(dim=-1, keepdim=True)
-            x = v @ attn.transpose(-2, -1)
+#             attn = (q.transpose(-2, -1) @ k) * (self.head_dim**-0.5)
+#             max_attn = attn.max(dim=-1, keepdim=True).values
+#             exp_attn = torch.exp(attn - max_attn)
+#             attn = exp_attn / exp_attn.sum(dim=-1, keepdim=True)
+#             x = v @ attn.transpose(-2, -1)
 
-            x = x.permute(0, 3, 1, 2)
+#             x = x.permute(0, 3, 1, 2)
 
-        if self.area > 1:
-            x = x.reshape(B // self.area, N * self.area, C)
-            B, N, _ = x.shape
-        x = x.reshape(B, H, W, C).permute(0, 3, 1, 2)
+#         if self.area > 1:
+#             x = x.reshape(B // self.area, N * self.area, C)
+#             B, N, _ = x.shape
+#         x = x.reshape(B, H, W, C).permute(0, 3, 1, 2)
 
-        return self.proj(x)
+#         return self.proj(x)
 
 
 def autopad(k, p=None, d=1):  # kernel, padding, dilation
