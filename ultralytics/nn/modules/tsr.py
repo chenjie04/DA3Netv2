@@ -11,6 +11,7 @@ from ultralytics.nn.modules.conv import Conv
 
 from ultralytics.nn.modules.cbam import CBAM
 
+
 class SCDown_v2(nn.Module):
 
     def __init__(self, c1: int, c2: int, k: int, s: int):
@@ -343,6 +344,385 @@ class TSRModule(nn.Module):
 #         return out + x
 
 # v1.0 有效果
+# class AdaConcat(nn.Module):
+#     """
+#     Concatenate a list of tensors along specified dimension in a adaptive manner.
+
+#     Attributes:
+#         d (int): Dimension along which to concatenate tensors.
+#     """
+
+#     def __init__(
+#         self, channels: list = [512, 256], reduction: int = 4, dimension: int = 1
+#     ):
+#         """
+#         Initialize Concat module.
+
+#         Args:
+#             channels (List[int]): List of input channels.
+#             reduction (int): Reduction ratio for channel attention.
+#             dimension (int): Dimension along which to concatenate tensors.
+#         """
+#         super().__init__()
+#         self.channels = channels
+#         self.reduction = reduction
+#         self.d = dimension
+
+
+#         total_chs = sum(self.channels)
+#         self.channel_attn_max = nn.Sequential(
+#             nn.Conv2d(total_chs, total_chs // self.reduction, 1, bias=True),
+#             nn.ReLU(inplace=True),
+#             nn.Conv2d(total_chs // self.reduction, total_chs, 1, bias=True),
+#             nn.Hardsigmoid(),
+#         )
+
+#         self.spatial_attn_max = nn.Sequential(
+#             nn.Conv2d(2, 2, kernel_size=3, padding=1, bias=True),
+#             nn.Hardsigmoid(),
+#         )
+
+#     def forward(self, x: list[torch.Tensor]):
+#         """
+#         Concatenate input tensors along specified dimension.
+
+#         Args:
+#             x (list[torch.Tensor]): List of input tensors.
+
+#         Returns:
+#             (torch.Tensor): Concatenated tensor.
+#         """
+#         channel_max_pool = torch.cat(
+#             [
+#                 F.max_pool2d(
+#                     x[i],
+#                     (x[i].size(2), x[i].size(3)),
+#                     stride=(x[i].size(2), x[i].size(3)),
+#                 )
+#                 for i in range(len(x))
+#             ],
+#             dim=1,
+#         )
+
+#         channel_att_max = self.channel_attn_max(channel_max_pool)
+#         a1, a2 = torch.split(channel_att_max, self.channels, dim=1)
+
+#         spatial_max = torch.cat(
+#             [
+#                 torch.max(x[i], dim=(1), keepdim=True)[0]
+#                 for i in range(len(x))
+#             ],
+#             dim=1,
+#         )
+
+#         spatial_att_max = self.spatial_attn_max(spatial_max)
+#         s1, s2 = torch.split(spatial_att_max, [1,1], dim=1)
+
+#         out = torch.cat([x[0] * torch.sigmoid(a1*s1), x[1] * torch.sigmoid(a2*s2)], dim=self.d)
+
+#         return out
+
+# 不如v1.0
+# class AdaConcat(nn.Module):
+#     """
+#     Concatenate a list of tensors along specified dimension in a adaptive manner.
+
+#     Attributes:
+#         d (int): Dimension along which to concatenate tensors.
+#     """
+
+#     def __init__(
+#         self, channels: list = [512, 256], reduction: int = 4, dimension: int = 1
+#     ):
+#         """
+#         Initialize Concat module.
+
+#         Args:
+#             channels (List[int]): List of input channels.
+#             reduction (int): Reduction ratio for channel attention.
+#             dimension (int): Dimension along which to concatenate tensors.
+#         """
+#         super().__init__()
+#         self.channels = channels
+#         self.reduction = reduction
+#         self.d = dimension
+
+
+#         total_chs = sum(self.channels)
+#         self.channel_attn_max = nn.Sequential(
+#             nn.Conv2d(total_chs, total_chs // self.reduction, 1, bias=True),
+#             nn.ReLU(inplace=True),
+#             nn.Conv2d(total_chs // self.reduction, total_chs, 1, bias=True),
+#             nn.Hardsigmoid(),
+#         )
+
+#         self.spatial_attn_max = nn.Sequential(
+#             nn.Conv2d(2, 2, kernel_size=3, padding=1, bias=True),
+#             nn.Hardsigmoid(),
+#         )
+
+#     def forward(self, x: list[torch.Tensor]):
+#         """
+#         Concatenate input tensors along specified dimension.
+
+#         Args:
+#             x (list[torch.Tensor]): List of input tensors.
+
+#         Returns:
+#             (torch.Tensor): Concatenated tensor.
+#         """
+#         channel_max_pool = torch.cat(
+#             [
+#                 F.max_pool2d(
+#                     x[i],
+#                     (x[i].size(2), x[i].size(3)),
+#                     stride=(x[i].size(2), x[i].size(3)),
+#                 )
+#                 for i in range(len(x))
+#             ],
+#             dim=1,
+#         )
+
+#         channel_att_max = self.channel_attn_max(channel_max_pool)
+#         a1, a2 = torch.split(channel_att_max, self.channels, dim=1)
+
+#         x = [x[0] * a1, x[1] * a2]
+
+#         spatial_max = torch.cat(
+#             [
+#                 torch.max(x[i], dim=(1), keepdim=True)[0]
+#                 for i in range(len(x))
+#             ],
+#             dim=1,
+#         )
+
+#         spatial_att_max = self.spatial_attn_max(spatial_max)
+#         s1, s2 = torch.split(spatial_att_max, [1,1], dim=1)
+
+#         out = torch.cat([x[0] *s1, x[1] *s2], dim=self.d)
+
+#         return out
+
+
+class ChannelPool(nn.Module):
+    def forward(self, x):
+        return torch.cat(
+            (torch.max(x, 1)[0].unsqueeze(1), torch.mean(x, 1).unsqueeze(1)), dim=1
+        )
+
+
+# 有效，62.4了
+# class AdaConcat(nn.Module):
+#     """
+#     Concatenate a list of tensors along specified dimension in a adaptive manner.
+
+#     Attributes:
+#         d (int): Dimension along which to concatenate tensors.
+#     """
+
+#     def __init__(
+#         self, channels: list = [512, 256], reduction: int = 8, dimension: int = 1
+#     ):
+#         """
+#         Initialize Concat module.
+
+#         Args:
+#             channels (List[int]): List of input channels.
+#             reduction (int): Reduction ratio for channel attention.
+#             dimension (int): Dimension along which to concatenate tensors.
+#         """
+#         super().__init__()
+#         self.channels = channels
+#         self.reduction = reduction
+#         self.d = dimension
+
+#         total_chs = sum(self.channels)
+#         self.channels_mixing = nn.ModuleList(
+#             [
+#                 nn.Sequential(
+#                     nn.Conv2d(
+#                         self.channels[i],
+#                         self.channels[i] // self.reduction,
+#                         1,
+#                         bias=True,
+#                     ),
+#                     nn.SiLU(inplace=True),
+#                     nn.Conv2d(
+#                         self.channels[i] // self.reduction,
+#                         self.channels[i],
+#                         1,
+#                         bias=True,
+#                     ),
+#                 )
+#                 for i in range(len(self.channels))
+#             ]
+#         )
+#         self.channel_attn_max = nn.Sequential(
+#             nn.Conv2d(total_chs, total_chs // self.reduction, 1, bias=True),
+#             nn.ReLU(inplace=True),
+#             nn.Conv2d(total_chs // self.reduction, total_chs, 1, bias=True),
+#             nn.Hardsigmoid(),
+#         )
+
+#         self.channel_pool = ChannelPool()
+#         self.spatial_attn_max = nn.Sequential(
+#             nn.Conv2d(4, 2, kernel_size=3, padding=1, bias=True),
+#             nn.Hardsigmoid(),
+#         )
+
+#     def forward(self, x: list[torch.Tensor]):
+#         """
+#         Concatenate input tensors along specified dimension.
+
+#         Args:
+#             x (list[torch.Tensor]): List of input tensors.
+
+#         Returns:
+#             (torch.Tensor): Concatenated tensor.
+#         """
+#         channel_max_pool = torch.cat(
+#             [
+#                 self.channels_mixing[i](
+#                     F.max_pool2d(
+#                         x[i],
+#                         (x[i].size(2), x[i].size(3)),
+#                         stride=(x[i].size(2), x[i].size(3)),
+#                     )
+#                 ) + self.channels_mixing[i](
+#                     F.avg_pool2d(
+#                         x[i],
+#                         (x[i].size(2), x[i].size(3)),
+#                         stride=(x[i].size(2), x[i].size(3)),
+#                     )
+#                 )
+#                 for i in range(len(x))
+#             ],
+#             dim=1,
+#         )
+
+#         channel_att_max = self.channel_attn_max(channel_max_pool)
+#         a1, a2 = torch.split(channel_att_max, self.channels, dim=1)
+
+#         spatial_max = torch.cat(
+#             [self.channel_pool(x[i]) for i in range(len(x))],
+#             dim=1,
+#         )
+
+#         spatial_att_max = self.spatial_attn_max(spatial_max)
+#         s1, s2 = torch.split(spatial_att_max, [1, 1], dim=1)
+
+#         out = torch.cat(
+#             [x[0] * torch.sigmoid(a1 * s1), x[1] * torch.sigmoid(a2 * s2)], dim=self.d
+#         )
+
+#         return out
+
+# 级联的方式效果巨差
+# class AdaConcat(nn.Module):
+#     """
+#     Concatenate a list of tensors along specified dimension in a adaptive manner.
+
+#     Attributes:
+#         d (int): Dimension along which to concatenate tensors.
+#     """
+
+#     def __init__(
+#         self, channels: list = [512, 256], reduction: int = 8, dimension: int = 1
+#     ):
+#         """
+#         Initialize Concat module.
+
+#         Args:
+#             channels (List[int]): List of input channels.
+#             reduction (int): Reduction ratio for channel attention.
+#             dimension (int): Dimension along which to concatenate tensors.
+#         """
+#         super().__init__()
+#         self.channels = channels
+#         self.reduction = reduction
+#         self.d = dimension
+
+#         total_chs = sum(self.channels)
+#         self.channels_mixing = nn.ModuleList(
+#             [
+#                 nn.Sequential(
+#                     nn.Conv2d(
+#                         self.channels[i] * 2,
+#                         self.channels[i] // self.reduction,
+#                         1,
+#                         bias=True,
+#                     ),
+#                     nn.SiLU(inplace=True),
+#                     nn.Conv2d(
+#                         self.channels[i] // self.reduction,
+#                         self.channels[i],
+#                         1,
+#                         bias=True,
+#                     ),
+#                 )
+#                 for i in range(len(self.channels))
+#             ]
+#         )
+#         self.channel_attn_max = nn.Sequential(
+#             nn.Conv2d(total_chs, total_chs // self.reduction, 1, bias=True),
+#             nn.SiLU(inplace=True),
+#             nn.Conv2d(total_chs // self.reduction, total_chs, 1, bias=True),
+#             nn.Hardsigmoid(),
+#         )
+
+#         self.channel_pool = ChannelPool()
+#         self.spatial_attn_max = nn.Sequential(
+#             nn.Conv2d(4, 2, kernel_size=3, padding=1, bias=True),
+#             nn.Hardsigmoid(),
+#         )
+
+#     def forward(self, x: list[torch.Tensor]):
+#         """
+#         Concatenate input tensors along specified dimension.
+
+#         Args:
+#             x (list[torch.Tensor]): List of input tensors.
+
+#         Returns:
+#             (torch.Tensor): Concatenated tensor.
+#         """
+#         channel_max_pool = torch.cat(
+#             [
+#                 self.channels_mixing[i](
+#                     torch.cat([F.max_pool2d(
+#                         x[i],
+#                         (x[i].size(2), x[i].size(3)),
+#                         stride=(x[i].size(2), x[i].size(3)),
+#                     ),
+#                     F.avg_pool2d(
+#                         x[i],
+#                         (x[i].size(2), x[i].size(3)),
+#                         stride=(x[i].size(2), x[i].size(3)),
+#                     )], dim=1)
+#                 )
+#                 for i in range(len(x))
+#             ],
+#             dim=1,
+#         )
+
+#         channel_att_max = self.channel_attn_max(channel_max_pool)
+#         a1, a2 = torch.split(channel_att_max, self.channels, dim=1)
+
+#         spatial_max = torch.cat(
+#             [self.channel_pool(x[i]) for i in range(len(x))],
+#             dim=1,
+#         )
+
+#         spatial_att_max = self.spatial_attn_max(spatial_max)
+#         s1, s2 = torch.split(spatial_att_max, [1, 1], dim=1)
+
+#         out = torch.cat(
+#             [x[0] * torch.sigmoid(a1 * s1), x[1] * torch.sigmoid(a2 * s2)], dim=self.d
+#         )
+
+#         return out
+
+
 class AdaConcat(nn.Module):
     """
     Concatenate a list of tensors along specified dimension in a adaptive manner.
@@ -352,7 +732,7 @@ class AdaConcat(nn.Module):
     """
 
     def __init__(
-        self, channels: list = [512, 256], reduction: int = 4, dimension: int = 1
+        self, channels: list = [512, 256], reduction: int = 8, kernel_size: int =3, dimension: int = 1
     ):
         """
         Initialize Concat module.
@@ -365,10 +745,30 @@ class AdaConcat(nn.Module):
         super().__init__()
         self.channels = channels
         self.reduction = reduction
+        self.kernel_size = kernel_size
         self.d = dimension
 
-
         total_chs = sum(self.channels)
+        self.channels_mixing = nn.ModuleList(
+            [
+                nn.Sequential(
+                    nn.Conv2d(
+                        self.channels[i],
+                        self.channels[i] // self.reduction,
+                        1,
+                        bias=True,
+                    ),
+                    nn.SiLU(inplace=True),
+                    nn.Conv2d(
+                        self.channels[i] // self.reduction,
+                        self.channels[i],
+                        1,
+                        bias=True,
+                    ),
+                )
+                for i in range(len(self.channels))
+            ]
+        )
         self.channel_attn_max = nn.Sequential(
             nn.Conv2d(total_chs, total_chs // self.reduction, 1, bias=True),
             nn.ReLU(inplace=True),
@@ -376,8 +776,9 @@ class AdaConcat(nn.Module):
             nn.Hardsigmoid(),
         )
 
+        self.channel_pool = ChannelPool()
         self.spatial_attn_max = nn.Sequential(
-            nn.Conv2d(2, 2, kernel_size=3, padding=1, bias=True),
+            nn.Conv2d(4, 2, kernel_size=kernel_size, padding=kernel_size//2, bias=True),
             nn.Hardsigmoid(),
         )
 
@@ -393,10 +794,18 @@ class AdaConcat(nn.Module):
         """
         channel_max_pool = torch.cat(
             [
-                F.max_pool2d(
-                    x[i],
-                    (x[i].size(2), x[i].size(3)),
-                    stride=(x[i].size(2), x[i].size(3)),
+                self.channels_mixing[i](
+                    F.max_pool2d(
+                        x[i],
+                        (x[i].size(2), x[i].size(3)),
+                        stride=(x[i].size(2), x[i].size(3)),
+                    )
+                ) + self.channels_mixing[i](
+                    F.avg_pool2d(
+                        x[i],
+                        (x[i].size(2), x[i].size(3)),
+                        stride=(x[i].size(2), x[i].size(3)),
+                    )
                 )
                 for i in range(len(x))
             ],
@@ -407,16 +816,15 @@ class AdaConcat(nn.Module):
         a1, a2 = torch.split(channel_att_max, self.channels, dim=1)
 
         spatial_max = torch.cat(
-            [
-                torch.max(x[i], dim=(1), keepdim=True)[0]
-                for i in range(len(x))
-            ],
+            [self.channel_pool(x[i]) for i in range(len(x))],
             dim=1,
         )
-        
-        spatial_att_max = self.spatial_attn_max(spatial_max)
-        s1, s2 = torch.split(spatial_att_max, [1,1], dim=1)
 
-        out = torch.cat([x[0] * torch.sigmoid(a1*s1), x[1] * torch.sigmoid(a2*s2)], dim=self.d)
+        spatial_att_max = self.spatial_attn_max(spatial_max)
+        s1, s2 = torch.split(spatial_att_max, [1, 1], dim=1)
+
+        out = torch.cat(
+            [x[0] * torch.sigmoid(a1 * s1), x[1] * torch.sigmoid(a2 * s2)], dim=self.d
+        )
 
         return out

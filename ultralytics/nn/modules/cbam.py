@@ -36,6 +36,7 @@ class ChannelGate(nn.Module):
         self.pool_types = pool_types
     def forward(self, x):
         channel_att_sum = None
+        channel_att_raw = None
         for pool_type in self.pool_types:
             if pool_type=='avg':
                 avg_pool = F.avg_pool2d( x, (x.size(2), x.size(3)), stride=(x.size(2), x.size(3)))
